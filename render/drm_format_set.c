@@ -93,6 +93,26 @@ bool wlr_drm_format_set_add(struct wlr_drm_format_set *set, uint32_t format,
 	return true;
 }
 
+bool wlr_drm_format_set_copy(struct wlr_drm_format_set *dst,
+		const struct wlr_drm_format_set *src) {
+	dst->len = src->len;
+	dst->capacity = src->capacity;
+	dst->formats = calloc(dst->capacity, sizeof(struct wlr_drm_format *));
+	if (dst->formats == NULL) {
+		return false;
+	}
+	for (size_t i = 0; i < src->len; i++) {
+		const struct wlr_drm_format *fmt = src->formats[i];
+		size_t fmt_size = sizeof(*fmt) + sizeof(fmt->modifiers[0]) * fmt->capacity;
+		dst->formats[i] = malloc(fmt_size);
+		if (dst->formats[i] == NULL) {
+			return false;
+		}
+		memcpy(dst->formats[i], fmt, fmt_size);
+	}
+	return true;
+}
+
 struct wlr_drm_format *wlr_drm_format_create(uint32_t format) {
 	size_t capacity = 4;
 	struct wlr_drm_format *fmt =
