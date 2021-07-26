@@ -195,7 +195,8 @@ out:
 	return fd;
 }
 
-struct wlr_backend *wlr_headless_backend_create(struct wl_display *display) {
+static struct wlr_backend *headless_backend_create_with_drm_fd(
+		struct wl_display *display, int drm_fd) {
 	wlr_log(WLR_INFO, "Creating headless backend");
 
 	struct wlr_headless_backend *backend =
@@ -205,21 +206,31 @@ struct wlr_backend *wlr_headless_backend_create(struct wl_display *display) {
 		return NULL;
 	}
 
-	backend->drm_fd = open_drm_render_node();
-	if (backend->drm_fd < 0) {
-		wlr_log(WLR_ERROR, "Failed to open DRM render node");
-	}
+	backend->drm_fd = drm_fd;
 
 	if (!backend_init(backend, display, NULL)) {
-		goto error_init;
+		free(backend);
+		return NULL;
 	}
 
 	return &backend->backend;
+}
 
-error_init:
-	close(backend->drm_fd);
-	free(backend);
-	return NULL;
+struct wlr_backend *wlr_headless_backend_create(struct wl_display *display) {
+	int drm_fd = open_drm_render_node();
+	if (drm_fd < 0) {
+		wlr_log(WLR_ERROR, "Failed to open DRM render node");
+		return NULL;
+	}
+
+	struct wlr_backend *backend =
+		headless_backend_create_with_drm_fd(display, drm_fd);
+	if (!backend) {
+		close(drm_fd);
+		return NULL;
+	}
+
+	return backend;
 }
 
 struct wlr_backend *wlr_headless_backend_create_with_renderer(
