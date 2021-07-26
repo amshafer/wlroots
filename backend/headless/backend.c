@@ -233,6 +233,30 @@ struct wlr_backend *wlr_headless_backend_create(struct wl_display *display) {
 	return backend;
 }
 
+struct wlr_backend *wlr_headless_backend_create_with_parent(
+		struct wl_display *display, struct wlr_backend *parent) {
+	int drm_fd = wlr_backend_get_drm_fd(parent);
+	if (drm_fd < 0) {
+		wlr_log(WLR_ERROR, "Failed to get DRM FD from parent backend");
+		return NULL;
+	}
+
+	drm_fd = fcntl(drm_fd, F_DUPFD_CLOEXEC, 0);
+	if (drm_fd < 0) {
+		wlr_log_errno(WLR_ERROR, "fcntl(F_DUPFD_CLOEXEC) failed");
+		return NULL;
+	}
+
+	struct wlr_backend *backend =
+		headless_backend_create_with_drm_fd(display, drm_fd);
+	if (!backend) {
+		close(drm_fd);
+		return NULL;
+	}
+
+	return backend;
+}
+
 struct wlr_backend *wlr_headless_backend_create_with_renderer(
 		struct wl_display *display, struct wlr_renderer *renderer) {
 	wlr_log(WLR_INFO, "Creating headless backend with parent renderer");

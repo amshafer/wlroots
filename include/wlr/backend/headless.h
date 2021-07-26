@@ -19,6 +19,11 @@
  */
 struct wlr_backend *wlr_headless_backend_create(struct wl_display *display);
 /**
+ * Creates a headless backend from a parent backend.
+ */
+struct wlr_backend *wlr_headless_backend_create_with_parent(
+	struct wl_display *display, struct wlr_backend *parent);
+/**
  * Creates a headless backend with an existing renderer.
  */
 struct wlr_backend *wlr_headless_backend_create_with_renderer(
