@@ -392,7 +392,7 @@ static void seat_client_send_keymap(struct wlr_seat_client *client,
 			continue;
 		}
 
-		strcpy(ptr, keyboard->keymap_string);
+		memcpy(ptr, keyboard->keymap_string, keyboard->keymap_size);
 		munmap(ptr, keyboard->keymap_size);
 
 		wl_keyboard_send_keymap(resource,
