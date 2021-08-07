@@ -364,6 +364,13 @@ static void seat_client_send_keymap(struct wlr_seat_client *client,
 			continue;
 		}
 
+		// If the client supports read-only file mappings, send a shared FD
+		if (keyboard->keymap_fd >= 0 && wl_resource_get_version(resource) >= 7) {
+			wl_keyboard_send_keymap(resource, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1,
+				keyboard->keymap_fd, keyboard->keymap_size);
+			continue;
+		}
+
 		int keymap_fd = allocate_shm_file(keyboard->keymap_size);
 		if (keymap_fd < 0) {
 			wlr_log(WLR_ERROR, "creating a keymap file for %zu bytes failed", keyboard->keymap_size);
