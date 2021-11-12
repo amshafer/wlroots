@@ -47,15 +47,15 @@ struct wlr_linux_buffer_params_v1 {
 	bool has_modifier;
 };
 
-struct wlr_linux_dmabuf_hints_v1 {
+struct wlr_linux_dmabuf_feedback_v1 {
 	dev_t main_device;
 	size_t tranches_len;
-	struct wlr_linux_dmabuf_hints_v1_tranche *tranches;
+	struct wlr_linux_dmabuf_feedback_v1_tranche *tranches;
 };
 
-struct wlr_linux_dmabuf_hints_v1_tranche {
+struct wlr_linux_dmabuf_feedback_v1_tranche {
 	dev_t target_device;
-	uint32_t flags; // bitfield of enum zwp_linux_dmabuf_hints_v1_tranche_flags
+	uint32_t flags; // bitfield of enum zwp_linux_dmabuf_feedback_v1_tranche_flags
 	struct wlr_drm_format_set formats;
 };
 
@@ -70,7 +70,7 @@ struct wlr_linux_dmabuf_v1 {
 
 	// private state
 
-	struct wlr_linux_dmabuf_hints_v1 default_hints;
+	struct wlr_linux_dmabuf_feedback_v1 default_feedback;
 	struct wl_list surfaces; // wlr_linux_dmabuf_v1_surface.link
 
 	struct wl_listener display_destroy;
@@ -84,12 +84,12 @@ struct wlr_linux_dmabuf_v1 *wlr_linux_dmabuf_v1_create(struct wl_display *displa
 	struct wlr_renderer *renderer);
 
 /**
- * Set a surface's DMA-BUF hints.
+ * Set a surface's DMA-BUF feedback.
  *
- * Passing a NULL hints resets it to the default hints.
+ * Passing a NULL feedback resets it to the default feedback.
  */
-bool wlr_linux_dmabuf_v1_set_surface_hints(
+bool wlr_linux_dmabuf_v1_set_surface_feedback(
 	struct wlr_linux_dmabuf_v1 *linux_dmabuf, struct wlr_surface *surface,
-	const struct wlr_linux_dmabuf_hints_v1 *hints);
+	const struct wlr_linux_dmabuf_feedback_v1 *feedback);
 
 #endif

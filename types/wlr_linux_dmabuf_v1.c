@@ -18,10 +18,10 @@ struct wlr_linux_dmabuf_v1_surface {
 	struct wlr_linux_dmabuf_v1 *linux_dmabuf;
 	struct wl_list link; // wlr_linux_dmabuf_v1.surfaces
 
-	bool has_hints;
-	struct wlr_linux_dmabuf_hints_v1 hints;
+	bool has_feedback;
+	struct wlr_linux_dmabuf_feedback_v1 feedback;
 
-	struct wl_list hints_resources; // wl_resource_get_link
+	struct wl_list feedback_resources; // wl_resource_get_link
 	struct wl_listener surface_destroy;
 };
 
@@ -419,18 +419,18 @@ static void linux_dmabuf_create_params(struct wl_client *client,
 		&buffer_params_impl, params, params_handle_resource_destroy);
 }
 
-static void linux_dmabuf_hints_destroy(struct wl_client *client,
+static void linux_dmabuf_feedback_destroy(struct wl_client *client,
 		struct wl_resource *resource) {
 	wl_resource_destroy(resource);
 }
 
-static const struct zwp_linux_dmabuf_hints_v1_interface
-		linux_dmabuf_hints_impl = {
-	.destroy = linux_dmabuf_hints_destroy,
+static const struct zwp_linux_dmabuf_feedback_v1_interface
+		linux_dmabuf_feedback_impl = {
+	.destroy = linux_dmabuf_feedback_destroy,
 };
 
-static bool hints_tranche_init_with_renderer(
-		struct wlr_linux_dmabuf_hints_v1_tranche *tranche,
+static bool feedback_tranche_init_with_renderer(
+		struct wlr_linux_dmabuf_feedback_v1_tranche *tranche,
 		struct wlr_renderer *renderer) {
 	memset(tranche, 0, sizeof(*tranche));
 
@@ -462,45 +462,45 @@ static bool hints_tranche_init_with_renderer(
 	return true;
 }
 
-static bool hints_init_with_renderer(struct wlr_linux_dmabuf_hints_v1 *hints,
+static bool feedback_init_with_renderer(struct wlr_linux_dmabuf_feedback_v1 *feedback,
 		struct wlr_renderer *renderer) {
-	memset(hints, 0, sizeof(*hints));
+	memset(feedback, 0, sizeof(*feedback));
 
-	struct wlr_linux_dmabuf_hints_v1_tranche *tranche =
+	struct wlr_linux_dmabuf_feedback_v1_tranche *tranche =
 		calloc(1, sizeof(*tranche));
 	if (tranche == NULL) {
 		return false;
 	}
 
-	if (!hints_tranche_init_with_renderer(tranche, renderer)) {
+	if (!feedback_tranche_init_with_renderer(tranche, renderer)) {
 		free(tranche);
 		return false;
 	}
 
-	hints->main_device = tranche->target_device;
-	hints->tranches = tranche;
-	hints->tranches_len = 1;
+	feedback->main_device = tranche->target_device;
+	feedback->tranches = tranche;
+	feedback->tranches_len = 1;
 
 	return true;
 }
 
-static void hints_finish(struct wlr_linux_dmabuf_hints_v1 *hints) {
-	for (size_t i = 0; i < hints->tranches_len; i++) {
-		struct wlr_linux_dmabuf_hints_v1_tranche *tranche = &hints->tranches[i];
+static void feedback_finish(struct wlr_linux_dmabuf_feedback_v1 *feedback) {
+	for (size_t i = 0; i < feedback->tranches_len; i++) {
+		struct wlr_linux_dmabuf_feedback_v1_tranche *tranche = &feedback->tranches[i];
 		wlr_drm_format_set_finish(&tranche->formats);
 	}
-	free(hints->tranches);
+	free(feedback->tranches);
 }
 
-static bool hints_copy(struct wlr_linux_dmabuf_hints_v1 *dst,
-		const struct wlr_linux_dmabuf_hints_v1 *src) {
+static bool feedback_copy(struct wlr_linux_dmabuf_feedback_v1 *dst,
+		const struct wlr_linux_dmabuf_feedback_v1 *src) {
 	memset(dst, 0, sizeof(*dst));
 
 	dst->main_device = src->main_device;
 	dst->tranches_len = src->tranches_len;
 
 	dst->tranches = calloc(src->tranches_len,
-		sizeof(struct wlr_linux_dmabuf_hints_v1_tranche));
+		sizeof(struct wlr_linux_dmabuf_feedback_v1_tranche));
 	if (dst->tranches == NULL) {
 		return false;
 	}
@@ -517,78 +517,78 @@ static bool hints_copy(struct wlr_linux_dmabuf_hints_v1 *dst,
 	return true;
 }
 
-static void hints_tranche_send(
-		const struct wlr_linux_dmabuf_hints_v1_tranche *tranche,
+static void feedback_tranche_send(
+		const struct wlr_linux_dmabuf_feedback_v1_tranche *tranche,
 		struct wl_resource *resource) {
 	struct wl_array dev_array = {
 		.size = sizeof(tranche->target_device),
 		.data = (void *)&tranche->target_device,
 	};
-	zwp_linux_dmabuf_hints_v1_send_tranche_target_device(resource, &dev_array);
+	zwp_linux_dmabuf_feedback_v1_send_tranche_target_device(resource, &dev_array);
 
-	zwp_linux_dmabuf_hints_v1_send_tranche_flags(resource, tranche->flags);
+	zwp_linux_dmabuf_feedback_v1_send_tranche_flags(resource, tranche->flags);
 
 	for (size_t i = 0; i < tranche->formats.len; i++) {
 		const struct wlr_drm_format *fmt = tranche->formats.formats[i];
 
 		// We always support buffers with an implicit modifier
-		zwp_linux_dmabuf_hints_v1_send_tranche_modifier(resource, fmt->format,
+		zwp_linux_dmabuf_feedback_v1_send_tranche_modifier(resource, fmt->format,
 			DRM_FORMAT_MOD_INVALID >> 32, DRM_FORMAT_MOD_INVALID & 0xFFFFFFFF);
 
 		for (size_t j = 0; j < fmt->len; j++) {
 			uint32_t modifier_lo = fmt->modifiers[j] & 0xFFFFFFFF;
 			uint32_t modifier_hi = fmt->modifiers[j] >> 32;
-			zwp_linux_dmabuf_hints_v1_send_tranche_modifier(resource,
+			zwp_linux_dmabuf_feedback_v1_send_tranche_modifier(resource,
 				fmt->format, modifier_hi, modifier_lo);
 		}
 	}
 
-	zwp_linux_dmabuf_hints_v1_send_tranche_done(resource);
+	zwp_linux_dmabuf_feedback_v1_send_tranche_done(resource);
 }
 
-static void hints_send(const struct wlr_linux_dmabuf_hints_v1 *hints,
+static void feedback_send(const struct wlr_linux_dmabuf_feedback_v1 *feedback,
 		struct wl_resource *resource) {
 	struct wl_array dev_array = {
-		.size = sizeof(hints->main_device),
-		.data = (void *)&hints->main_device,
+		.size = sizeof(feedback->main_device),
+		.data = (void *)&feedback->main_device,
 	};
-	zwp_linux_dmabuf_hints_v1_send_main_device(resource, &dev_array);
+	zwp_linux_dmabuf_feedback_v1_send_main_device(resource, &dev_array);
 
-	for (size_t i = 0; i < hints->tranches_len; i++) {
-		hints_tranche_send(&hints->tranches[i], resource);
+	for (size_t i = 0; i < feedback->tranches_len; i++) {
+		feedback_tranche_send(&feedback->tranches[i], resource);
 	}
 
-	zwp_linux_dmabuf_hints_v1_send_done(resource);
+	zwp_linux_dmabuf_feedback_v1_send_done(resource);
 }
 
-static void linux_dmabuf_get_default_hints(struct wl_client *client,
+static void linux_dmabuf_get_default_feedback(struct wl_client *client,
 		struct wl_resource *resource, uint32_t id) {
 	struct wlr_linux_dmabuf_v1 *linux_dmabuf =
 		linux_dmabuf_from_resource(resource);
 
 	uint32_t version = wl_resource_get_version(resource);
-	struct wl_resource *hints_resource = wl_resource_create(client,
-		&zwp_linux_dmabuf_hints_v1_interface, version, id);
-	if (hints_resource == NULL) {
+	struct wl_resource *feedback_resource = wl_resource_create(client,
+		&zwp_linux_dmabuf_feedback_v1_interface, version, id);
+	if (feedback_resource == NULL) {
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(hints_resource, &linux_dmabuf_hints_impl,
+	wl_resource_set_implementation(feedback_resource, &linux_dmabuf_feedback_impl,
 		NULL, NULL);
 
-	hints_send(&linux_dmabuf->default_hints, hints_resource);
+	feedback_send(&linux_dmabuf->default_feedback, feedback_resource);
 }
 
 static void surface_destroy(struct wlr_linux_dmabuf_v1_surface *surface) {
 	struct wl_resource *resource, *resource_tmp;
-	wl_resource_for_each_safe(resource, resource_tmp, &surface->hints_resources) {
+	wl_resource_for_each_safe(resource, resource_tmp, &surface->feedback_resources) {
 		struct wl_list *link = wl_resource_get_link(resource);
 		wl_list_remove(link);
 		wl_list_init(link);
 	}
 
-	if (surface->has_hints) {
-		hints_finish(&surface->hints);
+	if (surface->has_feedback) {
+		feedback_finish(&surface->feedback);
 	}
 
 	wl_list_remove(&surface->surface_destroy.link);
@@ -620,7 +620,7 @@ static struct wlr_linux_dmabuf_v1_surface *surface_get_or_create(
 
 	surface->surface = wlr_surface;
 	surface->linux_dmabuf = linux_dmabuf;
-	wl_list_init(&surface->hints_resources);
+	wl_list_init(&surface->feedback_resources);
 
 	surface->surface_destroy.notify = surface_handle_surface_destroy;
 	wl_signal_add(&wlr_surface->events.destroy, &surface->surface_destroy);
@@ -630,19 +630,19 @@ static struct wlr_linux_dmabuf_v1_surface *surface_get_or_create(
 	return surface;
 }
 
-static const struct wlr_linux_dmabuf_hints_v1 *surface_get_hints(
+static const struct wlr_linux_dmabuf_feedback_v1 *surface_get_feedback(
 		struct wlr_linux_dmabuf_v1_surface *surface) {
-	if (surface->has_hints) {
-		return &surface->hints;
+	if (surface->has_feedback) {
+		return &surface->feedback;
 	}
-	return &surface->linux_dmabuf->default_hints;
+	return &surface->linux_dmabuf->default_feedback;
 }
 
-static void surface_hints_handle_resource_destroy(struct wl_resource *resource) {
+static void surface_feedback_handle_resource_destroy(struct wl_resource *resource) {
 	wl_list_remove(wl_resource_get_link(resource));
 }
 
-static void linux_dmabuf_get_surface_hints(struct wl_client *client,
+static void linux_dmabuf_get_surface_feedback(struct wl_client *client,
 		struct wl_resource *resource, uint32_t id,
 		struct wl_resource *surface_resource) {
 	struct wlr_linux_dmabuf_v1 *linux_dmabuf =
@@ -657,17 +657,17 @@ static void linux_dmabuf_get_surface_hints(struct wl_client *client,
 	}
 
 	uint32_t version = wl_resource_get_version(resource);
-	struct wl_resource *hints_resource = wl_resource_create(client,
-		&zwp_linux_dmabuf_hints_v1_interface, version, id);
-	if (hints_resource == NULL) {
+	struct wl_resource *feedback_resource = wl_resource_create(client,
+		&zwp_linux_dmabuf_feedback_v1_interface, version, id);
+	if (feedback_resource == NULL) {
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(hints_resource, &linux_dmabuf_hints_impl,
-		NULL, surface_hints_handle_resource_destroy);
-	wl_list_insert(&surface->hints_resources, wl_resource_get_link(hints_resource));
+	wl_resource_set_implementation(feedback_resource, &linux_dmabuf_feedback_impl,
+		NULL, surface_feedback_handle_resource_destroy);
+	wl_list_insert(&surface->feedback_resources, wl_resource_get_link(feedback_resource));
 
-	hints_send(surface_get_hints(surface), hints_resource);
+	feedback_send(surface_get_feedback(surface), feedback_resource);
 }
 
 static void linux_dmabuf_destroy(struct wl_client *client,
@@ -678,8 +678,8 @@ static void linux_dmabuf_destroy(struct wl_client *client,
 static const struct zwp_linux_dmabuf_v1_interface linux_dmabuf_impl = {
 	.destroy = linux_dmabuf_destroy,
 	.create_params = linux_dmabuf_create_params,
-	.get_default_hints = linux_dmabuf_get_default_hints,
-	.get_surface_hints = linux_dmabuf_get_surface_hints,
+	.get_default_feedback = linux_dmabuf_get_default_feedback,
+	.get_surface_feedback = linux_dmabuf_get_surface_feedback,
 };
 
 static void linux_dmabuf_send_modifiers(struct wl_resource *resource,
@@ -737,7 +737,7 @@ static void linux_dmabuf_v1_destroy(struct wlr_linux_dmabuf_v1 *linux_dmabuf) {
 		surface_destroy(surface);
 	}
 
-	hints_finish(&linux_dmabuf->default_hints);
+	feedback_finish(&linux_dmabuf->default_feedback);
 
 	wl_list_remove(&linux_dmabuf->display_destroy.link);
 	wl_list_remove(&linux_dmabuf->renderer_destroy.link);
@@ -780,8 +780,8 @@ struct wlr_linux_dmabuf_v1 *wlr_linux_dmabuf_v1_create(struct wl_display *displa
 		return NULL;
 	}
 
-	if (!hints_init_with_renderer(&linux_dmabuf->default_hints, renderer)) {
-		wlr_log(WLR_ERROR, "Failed to init default linux-dmabuf hints");
+	if (!feedback_init_with_renderer(&linux_dmabuf->default_feedback, renderer)) {
+		wlr_log(WLR_ERROR, "Failed to init default linux-dmabuf feedback");
 		wl_global_destroy(linux_dmabuf->global);
 		free(linux_dmabuf);
 		return NULL;
@@ -796,31 +796,31 @@ struct wlr_linux_dmabuf_v1 *wlr_linux_dmabuf_v1_create(struct wl_display *displa
 	return linux_dmabuf;
 }
 
-bool wlr_linux_dmabuf_v1_set_surface_hints(
+bool wlr_linux_dmabuf_v1_set_surface_feedback(
 		struct wlr_linux_dmabuf_v1 *linux_dmabuf,
 		struct wlr_surface *wlr_surface,
-		const struct wlr_linux_dmabuf_hints_v1 *hints) {
+		const struct wlr_linux_dmabuf_feedback_v1 *feedback) {
 	struct wlr_linux_dmabuf_v1_surface *surface =
 		surface_get_or_create(linux_dmabuf, wlr_surface);
 	if (surface == NULL) {
 		return false;
 	}
 
-	if (surface->has_hints) {
-		hints_finish(&surface->hints);
-		surface->has_hints = false;
+	if (surface->has_feedback) {
+		feedback_finish(&surface->feedback);
+		surface->has_feedback = false;
 	}
 
-	if (hints != NULL) {
-		if (!hints_copy(&surface->hints, hints)) {
+	if (feedback != NULL) {
+		if (!feedback_copy(&surface->feedback, feedback)) {
 			return false;
 		}
-		surface->has_hints = true;
+		surface->has_feedback = true;
 	}
 
 	struct wl_resource *resource;
-	wl_resource_for_each(resource, &surface->hints_resources) {
-		hints_send(surface_get_hints(surface), resource);
+	wl_resource_for_each(resource, &surface->feedback_resources) {
+		feedback_send(surface_get_feedback(surface), resource);
 	}
 
 	return true;
