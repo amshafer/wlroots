@@ -10,6 +10,8 @@
 #include "linux-dmabuf-unstable-v1-protocol.h"
 #include "render/drm_format_set.h"
 #include "util/signal.h"
+#include <sys/mman.h>
+#include "util/shm.h"
 
 #define LINUX_DMABUF_VERSION 4
 
@@ -429,7 +431,7 @@ static const struct zwp_linux_dmabuf_feedback_v1_interface
 	.destroy = linux_dmabuf_feedback_destroy,
 };
 
-static bool feedback_tranche_init_with_renderer(
+static bool feedback_tranche_init_with_renderer(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
 		struct wlr_linux_dmabuf_feedback_v1_tranche *tranche,
 		struct wlr_renderer *renderer) {
 	memset(tranche, 0, sizeof(*tranche));
@@ -454,15 +456,11 @@ static bool feedback_tranche_init_with_renderer(
 		return false;
 	}
 
-	if (!wlr_drm_format_set_copy(&tranche->formats, formats)) {
-		wlr_log(WLR_ERROR, "Failed to copy DRM format set");
-		return false;
-	}
-
 	return true;
 }
 
-static bool feedback_init_with_renderer(struct wlr_linux_dmabuf_feedback_v1 *feedback,
+static bool feedback_init_with_renderer(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
+		struct wlr_linux_dmabuf_feedback_v1 *feedback,
 		struct wlr_renderer *renderer) {
 	memset(feedback, 0, sizeof(*feedback));
 
@@ -472,7 +470,7 @@ static bool feedback_init_with_renderer(struct wlr_linux_dmabuf_feedback_v1 *fee
 		return false;
 	}
 
-	if (!feedback_tranche_init_with_renderer(tranche, renderer)) {
+	if (!feedback_tranche_init_with_renderer(linux_dmabuf, tranche, renderer)) {
 		free(tranche);
 		return false;
 	}
@@ -485,10 +483,6 @@ static bool feedback_init_with_renderer(struct wlr_linux_dmabuf_feedback_v1 *fee
 }
 
 static void feedback_finish(struct wlr_linux_dmabuf_feedback_v1 *feedback) {
-	for (size_t i = 0; i < feedback->tranches_len; i++) {
-		struct wlr_linux_dmabuf_feedback_v1_tranche *tranche = &feedback->tranches[i];
-		wlr_drm_format_set_finish(&tranche->formats);
-	}
 	free(feedback->tranches);
 }
 
@@ -508,17 +502,14 @@ static bool feedback_copy(struct wlr_linux_dmabuf_feedback_v1 *dst,
 	for (size_t i = 0; i < src->tranches_len; i++) {
 		dst->tranches[i].target_device = src->tranches[i].target_device;
 		dst->tranches[i].flags = src->tranches[i].flags;
-		if (!wlr_drm_format_set_copy(&dst->tranches[i].formats,
-				&src->tranches[i].formats)) {
-			return false;
-		}
 	}
 
 	return true;
 }
 
 static void feedback_tranche_send(
-		const struct wlr_linux_dmabuf_feedback_v1_tranche *tranche,
+		struct wlr_linux_dmabuf_v1 *linux_dmabuf,
+		struct wlr_linux_dmabuf_feedback_v1_tranche *tranche,
 		struct wl_resource *resource) {
 	struct wl_array dev_array = {
 		.size = sizeof(tranche->target_device),
@@ -528,25 +519,13 @@ static void feedback_tranche_send(
 
 	zwp_linux_dmabuf_feedback_v1_send_tranche_flags(resource, tranche->flags);
 
-	for (size_t i = 0; i < tranche->formats.len; i++) {
-		const struct wlr_drm_format *fmt = tranche->formats.formats[i];
-
-		// We always support buffers with an implicit modifier
-		zwp_linux_dmabuf_feedback_v1_send_tranche_modifier(resource, fmt->format,
-			DRM_FORMAT_MOD_INVALID >> 32, DRM_FORMAT_MOD_INVALID & 0xFFFFFFFF);
-
-		for (size_t j = 0; j < fmt->len; j++) {
-			uint32_t modifier_lo = fmt->modifiers[j] & 0xFFFFFFFF;
-			uint32_t modifier_hi = fmt->modifiers[j] >> 32;
-			zwp_linux_dmabuf_feedback_v1_send_tranche_modifier(resource,
-				fmt->format, modifier_hi, modifier_lo);
-		}
-	}
+	zwp_linux_dmabuf_feedback_v1_send_tranche_formats(resource, &linux_dmabuf->format_table.indices);
 
 	zwp_linux_dmabuf_feedback_v1_send_tranche_done(resource);
 }
 
-static void feedback_send(const struct wlr_linux_dmabuf_feedback_v1 *feedback,
+static void feedback_send(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
+	const struct wlr_linux_dmabuf_feedback_v1 *feedback,
 		struct wl_resource *resource) {
 	struct wl_array dev_array = {
 		.size = sizeof(feedback->main_device),
@@ -554,8 +533,12 @@ static void feedback_send(const struct wlr_linux_dmabuf_feedback_v1 *feedback,
 	};
 	zwp_linux_dmabuf_feedback_v1_send_main_device(resource, &dev_array);
 
+	zwp_linux_dmabuf_feedback_v1_send_format_table(resource,
+			linux_dmabuf->format_table.ro_fd,
+			linux_dmabuf->format_table.len * sizeof(struct wlr_dmabuf_format_table_entry));
+
 	for (size_t i = 0; i < feedback->tranches_len; i++) {
-		feedback_tranche_send(&feedback->tranches[i], resource);
+		feedback_tranche_send(linux_dmabuf, &feedback->tranches[i], resource);
 	}
 
 	zwp_linux_dmabuf_feedback_v1_send_done(resource);
@@ -576,7 +559,7 @@ static void linux_dmabuf_get_default_feedback(struct wl_client *client,
 	wl_resource_set_implementation(feedback_resource, &linux_dmabuf_feedback_impl,
 		NULL, NULL);
 
-	feedback_send(&linux_dmabuf->default_feedback, feedback_resource);
+	feedback_send(linux_dmabuf, &linux_dmabuf->default_feedback, feedback_resource);
 }
 
 static void surface_destroy(struct wlr_linux_dmabuf_v1_surface *surface) {
@@ -667,7 +650,7 @@ static void linux_dmabuf_get_surface_feedback(struct wl_client *client,
 		NULL, surface_feedback_handle_resource_destroy);
 	wl_list_insert(&surface->feedback_resources, wl_resource_get_link(feedback_resource));
 
-	feedback_send(surface_get_feedback(surface), feedback_resource);
+	feedback_send(linux_dmabuf, surface_get_feedback(surface), feedback_resource);
 }
 
 static void linux_dmabuf_destroy(struct wl_client *client,
@@ -758,6 +741,81 @@ static void handle_renderer_destroy(struct wl_listener *listener, void *data) {
 	linux_dmabuf_v1_destroy(linux_dmabuf);
 }
 
+static bool dmabuf_format_table_init(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
+	struct wlr_renderer *renderer) {
+	const struct wlr_drm_format_set *formats =
+		wlr_renderer_get_dmabuf_texture_formats(renderer);
+	if (formats == NULL) {
+		wlr_log(WLR_ERROR, "Failed to get renderer DMA-BUF texture formats");
+		return false;
+	}
+
+	/*
+	 * The format list we were given doesn't include the modifiers in its
+	 * len. To calculate format_table size we need to go through and count
+	 * format+modifier pairs.
+	 */
+	int len = 0;
+	for (size_t i = 0; i < formats->len; i++) {
+		const struct wlr_drm_format *fmt = formats->formats[i];
+		len += fmt->len;
+	}
+	size_t size = len * sizeof(struct wlr_dmabuf_format_table_entry);
+
+	/* Make a temp file to hold the format table so we can share the fd */
+	int fd, ro_fd;
+	if (!allocate_shm_file_pair(size, &fd, &ro_fd)) {
+		wlr_log(WLR_ERROR, "failed to create anonymous file\n");
+		return false;
+	}
+
+	struct wlr_dmabuf_format_table_entry *data =
+		mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (data == MAP_FAILED) {
+		wlr_log(WLR_ERROR, "failed to mmap()\n");
+		close(fd);
+		return false;
+	}
+
+	wl_array_init(&linux_dmabuf->format_table.indices);
+	if (!wl_array_add(&linux_dmabuf->format_table.indices, len * sizeof(uint16_t))) {
+		wlr_log(WLR_ERROR, "failed to grow the size of the format indices array\n");
+		close(fd);
+		wl_array_release(&linux_dmabuf->format_table.indices);
+		return false;
+	}
+
+	int idx = 0;
+	for (size_t i = 0; i < formats->len; i++) {
+		const struct wlr_drm_format *fmt = formats->formats[i];
+		for (size_t j = 0; j < fmt->len; j++) {
+			data[idx].format = fmt->format;
+			data[idx].modifier = fmt->modifiers[j];
+			idx++;
+		}
+	}
+	assert(idx == len);
+
+	/* Now calculate the indices (in order, nothing fancy) */
+	idx = 0;
+	uint16_t *index_ptr;
+	wl_array_for_each(index_ptr, &linux_dmabuf->format_table.indices) {
+		*index_ptr = idx++;
+	}
+
+	linux_dmabuf->format_table.fd = fd;
+	linux_dmabuf->format_table.ro_fd = ro_fd;
+	linux_dmabuf->format_table.len = formats->len;
+	linux_dmabuf->format_table.data = data;
+	return true;
+}
+
+static void wlr_dmabuf_format_table_free(struct wlr_linux_dmabuf_v1 *linux_dmabuf) {
+	wl_array_release(&linux_dmabuf->format_table.indices);
+	free(linux_dmabuf->format_table.data);
+	close(linux_dmabuf->format_table.fd);
+}
+
 struct wlr_linux_dmabuf_v1 *wlr_linux_dmabuf_v1_create(struct wl_display *display,
 		struct wlr_renderer *renderer) {
 	struct wlr_linux_dmabuf_v1 *linux_dmabuf =
@@ -771,19 +829,29 @@ struct wlr_linux_dmabuf_v1 *wlr_linux_dmabuf_v1_create(struct wl_display *displa
 	wl_list_init(&linux_dmabuf->surfaces);
 	wl_signal_init(&linux_dmabuf->events.destroy);
 
+	/* Fill in the format table */
+	if (!dmabuf_format_table_init(linux_dmabuf, renderer)) {
+		wlr_log(WLR_ERROR, "Failed to init linux-dmabuf format table");
+		wl_global_destroy(linux_dmabuf->global);
+		free(linux_dmabuf);
+		return NULL;
+	}
+
 	linux_dmabuf->global =
 		wl_global_create(display, &zwp_linux_dmabuf_v1_interface,
 			LINUX_DMABUF_VERSION, linux_dmabuf, linux_dmabuf_bind);
 	if (!linux_dmabuf->global) {
 		wlr_log(WLR_ERROR, "could not create linux dmabuf v1 wl global");
 		free(linux_dmabuf);
+		wlr_dmabuf_format_table_free(linux_dmabuf);
 		return NULL;
 	}
 
-	if (!feedback_init_with_renderer(&linux_dmabuf->default_feedback, renderer)) {
+	if (!feedback_init_with_renderer(linux_dmabuf, &linux_dmabuf->default_feedback, renderer)) {
 		wlr_log(WLR_ERROR, "Failed to init default linux-dmabuf feedback");
 		wl_global_destroy(linux_dmabuf->global);
 		free(linux_dmabuf);
+		wlr_dmabuf_format_table_free(linux_dmabuf);
 		return NULL;
 	}
 
@@ -820,7 +888,7 @@ bool wlr_linux_dmabuf_v1_set_surface_feedback(
 
 	struct wl_resource *resource;
 	wl_resource_for_each(resource, &surface->feedback_resources) {
-		feedback_send(surface_get_feedback(surface), resource);
+		feedback_send(linux_dmabuf, surface_get_feedback(surface), resource);
 	}
 
 	return true;

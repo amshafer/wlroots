@@ -56,7 +56,27 @@ struct wlr_linux_dmabuf_feedback_v1 {
 struct wlr_linux_dmabuf_feedback_v1_tranche {
 	dev_t target_device;
 	uint32_t flags; // bitfield of enum zwp_linux_dmabuf_feedback_v1_tranche_flags
-	struct wlr_drm_format_set formats;
+};
+
+/*
+ * This is one entry in the format list we send the client in the format_table
+ * event.
+ */
+struct wlr_dmabuf_format_table_entry {
+	uint32_t format;
+	uint32_t pad; /* unused */
+	uint64_t modifier;
+};
+
+struct wlr_dmabuf_format_table {
+	int fd;
+	/* Read-only version of fd, to be shared with clients */
+	int ro_fd;
+	size_t len;
+	/* This will be mmapped from the fd above */
+	struct wlr_dmabuf_format_table_entry *data;
+	/* The default indices list. datatype is uint16_t */
+	struct wl_array indices;
 };
 
 /* the protocol interface */
@@ -75,6 +95,8 @@ struct wlr_linux_dmabuf_v1 {
 
 	struct wl_listener display_destroy;
 	struct wl_listener renderer_destroy;
+
+	struct wlr_dmabuf_format_table format_table;
 };
 
 /**
