@@ -248,6 +248,7 @@ static bool gles2_begin(struct wlr_renderer *wlr_renderer, uint32_t width,
 static void gles2_end(struct wlr_renderer *wlr_renderer) {
 	gles2_get_renderer_in_context(wlr_renderer);
 	// no-op
+    glFinish();
 }
 
 static void gles2_clear(struct wlr_renderer *wlr_renderer,
