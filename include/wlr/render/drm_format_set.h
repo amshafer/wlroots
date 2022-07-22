@@ -72,4 +72,12 @@ bool wlr_drm_format_set_add(struct wlr_drm_format_set *set, uint32_t format,
 bool wlr_drm_format_set_intersect(struct wlr_drm_format_set *dst,
 	const struct wlr_drm_format_set *a, const struct wlr_drm_format_set *b);
 
+/**
+ * Unions two DRM format sets `a` and `b`, returning a format set containing all
+ * format/modifier pairs.
+ *
+ * Returns NULL on failure.
+ */
+struct wlr_drm_format_set *wlr_drm_format_set_union(const struct wlr_drm_format_set *a,
+	const struct wlr_drm_format_set *b);
 #endif
