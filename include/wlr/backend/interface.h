@@ -18,6 +18,7 @@ struct wlr_backend_impl {
 	void (*destroy)(struct wlr_backend *backend);
 	clockid_t (*get_presentation_clock)(struct wlr_backend *backend);
 	int (*get_drm_fd)(struct wlr_backend *backend);
+	int (*get_drm_render_fd)(struct wlr_backend *backend);
 	uint32_t (*get_buffer_caps)(struct wlr_backend *backend);
 };
 

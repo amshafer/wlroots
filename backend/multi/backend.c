@@ -89,6 +89,19 @@ static int multi_backend_get_drm_fd(struct wlr_backend *backend) {
 	return -1;
 }
 
+static int multi_backend_get_drm_render_fd(struct wlr_backend *backend) {
+	struct wlr_multi_backend *multi = multi_backend_from_backend(backend);
+
+	struct subbackend_state *sub;
+	wl_list_for_each(sub, &multi->backends, link) {
+		if (sub->backend->impl->get_drm_render_fd) {
+			return wlr_backend_get_drm_render_fd(sub->backend);
+		}
+	}
+
+	return -1;
+}
+
 static uint32_t multi_backend_get_buffer_caps(struct wlr_backend *backend) {
 	struct wlr_multi_backend *multi = multi_backend_from_backend(backend);
 
@@ -116,6 +129,7 @@ static const struct wlr_backend_impl backend_impl = {
 	.destroy = multi_backend_destroy,
 	.get_presentation_clock = multi_backend_get_presentation_clock,
 	.get_drm_fd = multi_backend_get_drm_fd,
+	.get_drm_render_fd = multi_backend_get_drm_render_fd,
 	.get_buffer_caps = multi_backend_get_buffer_caps,
 };
 

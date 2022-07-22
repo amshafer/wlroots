@@ -222,6 +222,7 @@ static const struct wlr_backend_impl backend_impl = {
 	.start = backend_start,
 	.destroy = backend_destroy,
 	.get_drm_fd = backend_get_drm_fd,
+	.get_drm_render_fd = backend_get_drm_fd,
 	.get_buffer_caps = get_buffer_caps,
 };
 

@@ -546,6 +546,7 @@ static const struct wlr_backend_impl backend_impl = {
 	.destroy = backend_destroy,
 	.get_presentation_clock = backend_get_presentation_clock,
 	.get_drm_fd = backend_get_drm_fd,
+	.get_drm_render_fd = backend_get_drm_fd,
 	.get_buffer_caps = get_buffer_caps,
 };
 

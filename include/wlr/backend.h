@@ -62,5 +62,11 @@ clockid_t wlr_backend_get_presentation_clock(struct wlr_backend *backend);
  * to have ownership of it.
  */
 int wlr_backend_get_drm_fd(struct wlr_backend *backend);
+/**
+ * Returns the actual DRM node file descriptor used by the backend's underlying
+ * platform. wlr_backend_get_drm_fd will return the parent fd if we are in
+ * a multi-gpu scenario. This function always returns the render node drm fd.
+ */
+int wlr_backend_get_drm_render_fd(struct wlr_backend *backend);
 
 #endif

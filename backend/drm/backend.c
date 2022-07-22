@@ -1,3 +1,4 @@
+#define _XOPEN_SOURCE 700
 #include <assert.h>
 #include <errno.h>
 #include <drm_fourcc.h>
@@ -5,6 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <wayland-server-core.h>
 #include <wlr/backend/interface.h>
 #include <wlr/backend/session.h>
@@ -78,6 +82,12 @@ static int backend_get_drm_fd(struct wlr_backend *backend) {
 	}
 }
 
+static int backend_get_drm_render_fd(struct wlr_backend *backend) {
+	struct wlr_drm_backend *drm = get_drm_backend_from_backend(backend);
+
+	return drm->render_fd;
+}
+
 static uint32_t drm_backend_get_buffer_caps(struct wlr_backend *backend) {
 	return WLR_BUFFER_CAP_DMABUF;
 }
@@ -87,6 +97,7 @@ static const struct wlr_backend_impl backend_impl = {
 	.destroy = backend_destroy,
 	.get_presentation_clock = backend_get_presentation_clock,
 	.get_drm_fd = backend_get_drm_fd,
+	.get_drm_render_fd = backend_get_drm_render_fd,
 	.get_buffer_caps = drm_backend_get_buffer_caps,
 };
 
@@ -195,6 +206,7 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 		struct wlr_backend *parent) {
 	assert(display && session && dev);
 	assert(!parent || wlr_backend_is_drm(parent));
+	drmDevicePtr drm_dev = NULL;
 
 	char *name = drmGetDeviceNameFromFd2(dev->fd);
 	drmVersion *version = drmGetVersion(dev->fd);
@@ -215,6 +227,18 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 	drm->dev = dev;
 	drm->fd = dev->fd;
 	drm->name = name;
+
+	/* Get the render node fd */
+	if (drmGetDevice(dev->fd, &drm_dev)) {
+		return NULL;
+	}
+	if (!(drm_dev->available_nodes & (1 << DRM_NODE_RENDER))) {
+		goto error_dev;
+	}
+	drm->render_fd = open(drm_dev->nodes[DRM_NODE_RENDER], O_CLOEXEC);
+	if (drm->render_fd < 0) {
+		wlr_log(WLR_INFO, "wlr_drm_backend does not have a render node");
+	}
 
 	if (parent != NULL) {
 		drm->parent = get_drm_backend_from_backend(parent);
@@ -302,6 +326,8 @@ error_fd:
 	wl_list_remove(&drm->dev_change.link);
 	wl_list_remove(&drm->parent_destroy.link);
 	wlr_session_close_file(drm->session, dev);
+error_dev:
+	drmFreeDevice(&drm_dev);
 	free(drm);
 	return NULL;
 }
