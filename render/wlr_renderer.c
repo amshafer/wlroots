@@ -27,6 +27,7 @@
 #endif // WLR_HAS_VULKAN_RENDERER
 
 #include "backend/backend.h"
+#include "backend/multi.h"
 #include "render/pixel_format.h"
 #include "render/wlr_renderer.h"
 #include "util/env.h"
@@ -44,6 +45,7 @@ void wlr_renderer_init(struct wlr_renderer *renderer,
 	memset(renderer, 0, sizeof(*renderer));
 	renderer->impl = impl;
 
+	wl_list_init(&renderer->multi_link);
 	wl_signal_init(&renderer->events.destroy);
 	wl_signal_init(&renderer->events.lost);
 }
@@ -56,6 +58,7 @@ void wlr_renderer_destroy(struct wlr_renderer *r) {
 	assert(!r->rendering);
 
 	wl_signal_emit_mutable(&r->events.destroy, r);
+	wl_list_remove(&r->multi_link);
 
 	if (r->impl && r->impl->destroy) {
 		r->impl->destroy(r);
@@ -398,6 +401,14 @@ struct wlr_renderer *wlr_renderer_autocreate(struct wlr_backend *backend) {
 
 	if (render_drm_fd >= 0) {
 		close(render_drm_fd);
+	}
+
+	// If we have a multi GPU environment, then track this renderer
+	// for cross-GPU imports.
+	if (wlr_backend_is_multi(backend)) {
+		struct wlr_multi_backend *multi = (struct wlr_multi_backend *)backend;
+		wlr_multi_gpu_add_renderer(multi->multi_gpu, renderer);
+		wlr_multi_gpu_set_primary(multi->multi_gpu, renderer);
 	}
 
 	return renderer;

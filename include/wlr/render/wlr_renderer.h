@@ -40,6 +40,9 @@ struct wlr_renderer {
 
 	bool rendering;
 	bool rendering_with_buffer;
+
+	/* Link for if we are in a list for wlr_multi_gpu */
+	struct wl_list multi_link;
 };
 
 /**

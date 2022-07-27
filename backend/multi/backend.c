@@ -6,6 +6,7 @@
 #include <wlr/backend/interface.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/util/log.h>
+#include <wlr/render/wlr_renderer.h>
 #include "backend/backend.h"
 #include "backend/multi.h"
 
@@ -56,6 +57,7 @@ static void multi_backend_destroy(struct wlr_backend *wlr_backend) {
 			wl_container_of(backend->backends.next, sub, link);
 		wlr_backend_destroy(sub->backend);
 	}
+	wlr_multi_gpu_destroy(backend->multi_gpu);
 
 	// Destroy this backend only after removing all sub-backends
 	wlr_backend_finish(wlr_backend);
@@ -148,6 +150,7 @@ struct wlr_backend *wlr_multi_backend_create(struct wl_display *display) {
 	}
 
 	wl_list_init(&backend->backends);
+	backend->multi_gpu = wlr_multi_gpu_create();
 	wlr_backend_init(&backend->backend, &backend_impl);
 
 	wl_signal_init(&backend->events.backend_add);
@@ -254,4 +257,29 @@ void wlr_multi_for_each_backend(struct wlr_backend *_backend,
 	wl_list_for_each(sub, &backend->backends, link) {
 		callback(sub->backend, data);
 	}
+}
+
+struct wlr_multi_gpu *wlr_multi_gpu_create(void) {
+	struct wlr_multi_gpu *multi_gpu = calloc(1, sizeof(struct wlr_multi_gpu));
+	if (!multi_gpu) {
+		return NULL;
+	}
+
+	wl_list_init(&multi_gpu->renderers);
+
+	return multi_gpu;
+}
+
+void wlr_multi_gpu_destroy(struct wlr_multi_gpu *multi_gpu) {
+	free(multi_gpu);
+}
+
+void wlr_multi_gpu_add_renderer(struct wlr_multi_gpu *multi_gpu,
+		struct wlr_renderer *renderer) {
+	wl_list_insert(&multi_gpu->renderers, &renderer->multi_link);
+}
+
+void wlr_multi_gpu_set_primary(struct wlr_multi_gpu *multi_gpu,
+		struct wlr_renderer *renderer) {
+	multi_gpu->primary = renderer;
 }

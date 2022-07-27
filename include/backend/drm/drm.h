@@ -109,6 +109,7 @@ struct wlr_drm_backend {
 
 	/* Only initialized on multi-GPU setups */
 	struct wlr_drm_renderer mgpu_renderer;
+	struct wlr_multi_gpu *multi_gpu;
 
 	struct wlr_session *session;
 

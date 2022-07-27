@@ -16,6 +16,7 @@
 #include <wlr/util/log.h>
 #include <xf86drm.h>
 #include "backend/drm/drm.h"
+#include "backend/multi.h"
 
 struct wlr_drm_backend *get_drm_backend_from_backend(
 		struct wlr_backend *wlr_backend) {
@@ -202,8 +203,8 @@ static void handle_parent_destroy(struct wl_listener *listener, void *data) {
 }
 
 struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
-		struct wlr_session *session, struct wlr_device *dev,
-		struct wlr_backend *parent) {
+		struct wlr_session *session, struct wlr_backend *backend,
+		struct wlr_device *dev, struct wlr_backend *parent) {
 	assert(display && session && dev);
 	assert(!parent || wlr_backend_is_drm(parent));
 	drmDevicePtr drm_dev = NULL;
@@ -256,6 +257,7 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 	wl_signal_add(&dev->events.remove, &drm->dev_remove);
 
 	drm->display = display;
+	drm->multi_gpu = ((struct wlr_multi_backend *)backend)->multi_gpu;
 
 	struct wl_event_loop *event_loop = wl_display_get_event_loop(display);
 	drm->drm_event = wl_event_loop_add_fd(event_loop, drm->fd,
@@ -304,6 +306,9 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 				wlr_drm_format_set_add(&drm->mgpu_formats, fmt->format, mod);
 			}
 		}
+
+		/* If not the primary GPU, add its mgpu renderer to the set */
+		wlr_multi_gpu_add_renderer(drm->multi_gpu, drm->mgpu_renderer.wlr_rend);
 	}
 
 	drm->session_destroy.notify = handle_session_destroy;
