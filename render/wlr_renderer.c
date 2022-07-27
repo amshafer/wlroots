@@ -409,6 +409,7 @@ struct wlr_renderer *wlr_renderer_autocreate(struct wlr_backend *backend) {
 		struct wlr_multi_backend *multi = (struct wlr_multi_backend *)backend;
 		wlr_multi_gpu_add_renderer(multi->multi_gpu, renderer);
 		wlr_multi_gpu_set_primary(multi->multi_gpu, renderer);
+		renderer->multi_gpu = multi->multi_gpu;
 	}
 
 	return renderer;

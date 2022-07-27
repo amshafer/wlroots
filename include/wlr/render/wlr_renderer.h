@@ -43,6 +43,8 @@ struct wlr_renderer {
 
 	/* Link for if we are in a list for wlr_multi_gpu */
 	struct wl_list multi_link;
+	/* The GPU list we are a part of, may be null if not created from multi backend */
+	struct wlr_multi_gpu *multi_gpu;
 };
 
 /**
