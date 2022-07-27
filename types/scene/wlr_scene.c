@@ -784,7 +784,8 @@ static struct wlr_texture *scene_buffer_get_texture(
 	struct wlr_client_buffer *client_buffer =
 		wlr_client_buffer_get(scene_buffer->buffer);
 	if (client_buffer != NULL) {
-		return client_buffer->texture;
+		return wlr_texture_set_get_tex_for_renderer(client_buffer->texture_set,
+				renderer);
 	}
 
 	if (scene_buffer->texture != NULL) {

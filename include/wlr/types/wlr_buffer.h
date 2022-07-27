@@ -142,7 +142,7 @@ struct wlr_client_buffer {
 	 * The buffer's texture, if any. A buffer will not have a texture if the
 	 * client destroys the buffer before it has been released.
 	 */
-	struct wlr_texture *texture;
+	struct wlr_texture_set *texture_set;
 	/**
 	 * The buffer this client buffer was created from. NULL if destroyed.
 	 */

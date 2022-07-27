@@ -309,6 +309,7 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 
 		/* If not the primary GPU, add its mgpu renderer to the set */
 		wlr_multi_gpu_add_renderer(drm->multi_gpu, drm->mgpu_renderer.wlr_rend);
+		drm->mgpu_renderer.wlr_rend->multi_gpu = drm->multi_gpu;
 	}
 
 	drm->session_destroy.notify = handle_session_destroy;

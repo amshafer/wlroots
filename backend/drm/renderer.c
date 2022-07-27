@@ -90,16 +90,22 @@ struct wlr_buffer *drm_surface_blit(struct wlr_drm_surface *surf,
 		return NULL;
 	}
 
-	struct wlr_texture *tex = wlr_texture_from_buffer(renderer, buffer);
+	struct wlr_texture_set *set = wlr_texture_set_from_buffer(renderer, buffer);
+	if (!set) {
+		return NULL;
+	}
+
+	struct wlr_texture *tex = wlr_texture_set_get_tex_for_renderer(set, renderer);
 	if (tex == NULL) {
 		wlr_log(WLR_ERROR, "Failed to import source buffer into multi-GPU renderer");
+		wlr_texture_set_destroy(set);
 		return NULL;
 	}
 
 	struct wlr_buffer *dst = wlr_swapchain_acquire(surf->swapchain, NULL);
 	if (!dst) {
 		wlr_log(WLR_ERROR, "Failed to acquire multi-GPU swapchain buffer");
-		wlr_texture_destroy(tex);
+		wlr_texture_set_destroy(set);
 		return NULL;
 	}
 
@@ -110,7 +116,7 @@ struct wlr_buffer *drm_surface_blit(struct wlr_drm_surface *surf,
 	if (!wlr_renderer_begin_with_buffer(renderer, dst)) {
 		wlr_log(WLR_ERROR, "Failed to bind multi-GPU destination buffer");
 		wlr_buffer_unlock(dst);
-		wlr_texture_destroy(tex);
+		wlr_texture_set_destroy(set);
 		return NULL;
 	}
 
@@ -119,7 +125,7 @@ struct wlr_buffer *drm_surface_blit(struct wlr_drm_surface *surf,
 
 	wlr_renderer_end(renderer);
 
-	wlr_texture_destroy(tex);
+	wlr_texture_set_destroy(set);
 
 	return dst;
 }

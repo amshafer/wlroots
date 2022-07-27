@@ -69,6 +69,9 @@ struct wlr_linux_dmabuf_v1 {
 
 	int main_device_fd; // to sanity check FDs sent by clients
 
+	// This is only set when the compositor isn't providing a custom renderer.
+	struct wlr_renderer *main_renderer;
+
 	struct wl_listener display_destroy;
 };
 

@@ -24,7 +24,7 @@ static struct wlr_client_buffer *client_buffer_from_buffer(
 static void client_buffer_destroy(struct wlr_buffer *buffer) {
 	struct wlr_client_buffer *client_buffer = client_buffer_from_buffer(buffer);
 	wl_list_remove(&client_buffer->source_destroy.link);
-	wlr_texture_destroy(client_buffer->texture);
+	wlr_texture_set_destroy(client_buffer->texture_set);
 	free(client_buffer);
 }
 
@@ -55,8 +55,8 @@ static void client_buffer_handle_source_destroy(struct wl_listener *listener,
 
 struct wlr_client_buffer *wlr_client_buffer_create(struct wlr_buffer *buffer,
 		struct wlr_renderer *renderer) {
-	struct wlr_texture *texture = wlr_texture_from_buffer(renderer, buffer);
-	if (texture == NULL) {
+	struct wlr_texture_set *texture_set = wlr_texture_set_from_buffer(renderer, buffer);
+	if (texture_set == NULL) {
 		wlr_log(WLR_ERROR, "Failed to create texture");
 		return NULL;
 	}
@@ -64,13 +64,13 @@ struct wlr_client_buffer *wlr_client_buffer_create(struct wlr_buffer *buffer,
 	struct wlr_client_buffer *client_buffer =
 		calloc(1, sizeof(struct wlr_client_buffer));
 	if (client_buffer == NULL) {
-		wlr_texture_destroy(texture);
+		wlr_texture_set_destroy(texture_set);
 		return NULL;
 	}
 	wlr_buffer_init(&client_buffer->base, &client_buffer_impl,
-		texture->width, texture->height);
+		buffer->width, buffer->height);
 	client_buffer->source = buffer;
-	client_buffer->texture = texture;
+	client_buffer->texture_set = texture_set;
 
 	wl_signal_add(&buffer->events.destroy, &client_buffer->source_destroy);
 	client_buffer->source_destroy.notify = client_buffer_handle_source_destroy;
@@ -89,5 +89,5 @@ bool wlr_client_buffer_apply_damage(struct wlr_client_buffer *client_buffer,
 		return false;
 	}
 
-	return wlr_texture_update_from_buffer(client_buffer->texture, next, damage);
+	return wlr_texture_set_update_from_buffer(client_buffer->texture_set, next, damage);
 }
