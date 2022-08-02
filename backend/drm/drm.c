@@ -491,6 +491,7 @@ static void drm_connector_state_finish(struct wlr_drm_connector_state *state) {
 
 static bool drm_connector_state_update_primary_fb(struct wlr_drm_connector *conn,
 		struct wlr_drm_connector_state *state) {
+	bool ok;
 	struct wlr_drm_backend *drm = conn->backend;
 
 	assert(state->base->committed & WLR_OUTPUT_STATE_BUFFER);
@@ -500,35 +501,63 @@ static bool drm_connector_state_update_primary_fb(struct wlr_drm_connector *conn
 
 	struct wlr_drm_plane *plane = crtc->primary;
 	struct wlr_buffer *source_buf = state->base->buffer;
+	struct wlr_buffer *local_buf = wlr_buffer_lock(source_buf);
 
-	struct wlr_buffer *local_buf;
-	if (drm->parent) {
+	/*
+	 * First try to import the buffer. We can have a decent degree of
+	 * confidence this will work for a couple reasons:
+	 * 1. Apps running on the dGPU in PRIME setups will be submitting
+	 *    buffers with linear modifiers, so that they can be imported
+	 *    on the primary GPU. This means they are directly imporatable
+	 *    here as well. This gives a nice FPS boost.
+	 * 2. When the dGPU app supports reacting to dmabuf feedback it will
+	 *    be using dGPU modifiers, again meaning it can be imported into
+	 *    the dGPU directly for an additional nice perf boost.
+	 *
+	 * The fallback drm_surface_blit path will only be hit when the
+	 * app is running fullscreen with dGPU (non-linear) modifiers and
+	 * we start using rendered composition again. For a frame we will
+	 * do the fallback before the app reallocs its buffers back to
+	 * linear to be compatible with the primary GPU.
+	 */
+	ok = drm_fb_import(&state->primary_fb, drm, local_buf,
+		&crtc->primary->formats);
+
+	/*
+	 * If trying to import this buffer directly didn't work then try
+	 * to perform a blit to a mgpu drm surface and import that instead.
+	 */
+	if (!ok && drm->parent) {
 		struct wlr_drm_format *format =
 			drm_plane_pick_render_format(plane, &drm->mgpu_renderer);
 		if (format == NULL) {
 			wlr_log(WLR_ERROR, "Failed to pick primary plane format");
-			return false;
+			ok = false;
+			goto release_buf;
 		}
 
 		// TODO: fallback to modifier-less buffer allocation
-		bool ok = init_drm_surface(&plane->mgpu_surf, &drm->mgpu_renderer,
+		ok = init_drm_surface(&plane->mgpu_surf, &drm->mgpu_renderer,
 			source_buf->width, source_buf->height, format);
 		free(format);
 		if (!ok) {
-			return false;
+			ok = false;
+			goto release_buf;
 		}
 
-		local_buf = drm_surface_blit(&plane->mgpu_surf, source_buf);
-		if (local_buf == NULL) {
-			return false;
+		struct wlr_buffer *drm_buf = drm_surface_blit(&plane->mgpu_surf, source_buf);
+		if (drm_buf == NULL) {
+			ok = false;
+			goto release_buf;
 		}
-	} else {
-		local_buf = wlr_buffer_lock(source_buf);
+		ok = drm_fb_import(&state->primary_fb, drm, drm_buf,
+				&plane->formats);
+		wlr_buffer_unlock(drm_buf);
 	}
 
-	bool ok = drm_fb_import(&state->primary_fb, drm, local_buf,
-		&plane->formats);
+release_buf:
 	wlr_buffer_unlock(local_buf);
+
 	if (!ok) {
 		wlr_drm_conn_log(conn, WLR_DEBUG,
 			"Failed to import buffer for scan-out");

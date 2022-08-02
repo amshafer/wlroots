@@ -1154,8 +1154,8 @@ bool wlr_linux_dmabuf_feedback_v1_init_with_options(struct wlr_linux_dmabuf_feed
 
 		tranche->target_device = backend_dev;
 		tranche->flags = ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SCANOUT;
-		if (!wlr_drm_format_set_intersect(&tranche->formats, scanout_formats, renderer_formats)) {
-			wlr_log(WLR_ERROR, "Failed to intersect renderer and scanout formats");
+		if (!wlr_drm_format_set_copy(&tranche->formats, scanout_formats)) {
+			wlr_log(WLR_ERROR, "Failed to copy scanout formats");
 			goto error;
 		}
 	}
